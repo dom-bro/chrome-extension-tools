@@ -54,7 +54,7 @@ async function sendToServer(url: URL): Promise<Response> {
 
 const ports = new Set<chrome.runtime.Port>()
 
-chrome.runtime.onConnect.addListener((port) => {
+const connectListener = (port: chrome.runtime.Port) => {
   if (port.name === '@crx/client') {
     ports.add(port)
     port.onDisconnect.addListener((port) => ports.delete(port))
@@ -65,7 +65,11 @@ chrome.runtime.onConnect.addListener((port) => {
     })
     port.postMessage({ data: JSON.stringify({ type: 'connected' }) })
   }
-})
+}
+
+chrome.runtime.onConnect.addListener(connectListener)
+// for content-script MAIN
+chrome.runtime.onConnectExternal.addListener(connectListener)
 
 function notifyContentScripts(payload: HMRPayload) {
   const data = JSON.stringify(payload)
@@ -74,7 +78,7 @@ function notifyContentScripts(payload: HMRPayload) {
 
 /* ----------- CONNECT TO VITE DEV SERVER ---------- */
 
-console.log('[vite] connecting...')
+console.log('[vite] dombro connecting...')
 
 // use server configuration, then fallback to inference
 const socketProtocol =
@@ -111,7 +115,7 @@ function handleCrxHmrPayload(payload: CrxHMRPayload) {
   switch (payload.event) {
     case 'crx:runtime-reload':
       // immediate runtime reload
-      console.log('[crx] runtime reload')
+      console.log('[crx] dombro hmr-client-worker runtime reload', payload)
       chrome.runtime.reload()
       break
 
@@ -135,7 +139,7 @@ async function waitForSuccessfulPing(ms = 1000) {
 // ping server
 socket.addEventListener('close', async ({ wasClean }) => {
   if (wasClean) return
-  console.log(`[vite] server connection lost. polling for restart...`)
+  console.log(`[vite] dombro server connection lost. polling for restart...`)
   await waitForSuccessfulPing()
   handleCrxHmrPayload({
     type: 'custom',

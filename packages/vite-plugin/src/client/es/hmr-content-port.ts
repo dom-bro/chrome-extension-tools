@@ -29,7 +29,7 @@ export class HMRPort {
           error.message.includes('Extension context invalidated.')
         ) {
           // TODO: hook into error overlay?
-          location.reload()
+          // location.reload()
         } else throw error
       }
     }, __CRX_HMR_TIMEOUT__)
@@ -39,7 +39,8 @@ export class HMRPort {
 
   initPort = () => {
     this.port?.disconnect()
-    this.port = chrome.runtime.connect({ name: '@crx/client' })
+    // @ts-expect-error for content-script MAIN
+    this.port = chrome.runtime.connect(chrome?.runtime?.extensionId, { name: '@crx/client' })
     this.port.onDisconnect.addListener(this.handleDisconnect.bind(this))
     this.port.onMessage.addListener(this.handleMessage.bind(this))
     this.port.postMessage({ type: 'connected' })
@@ -64,8 +65,8 @@ export class HMRPort {
     if (isCrxHMRPayload(payload)) {
       if (payload.event === 'crx:runtime-reload') {
         // delayed page reload; let background finish restart
-        console.log('[crx] runtime reload')
-        setTimeout(() => location.reload(), 500)
+        console.log('[crx] dombro hmr-content-port runtime reload')
+        // setTimeout(() => location.reload(), 500)
       } else {
         // unpack hmr payloads; forward to vite client
         // console.log('[crx] content payload', payload)
