@@ -403,6 +403,11 @@ Public dir: "${config.publicDir}"`,
 
         /* -------------- OUTPUT MANIFEST FILE ------------- */
 
+        if (manifest?.direct_content_scripts) {
+          manifest.content_scripts?.push(...manifest.direct_content_scripts)
+          delete manifest.direct_content_scripts
+        }
+
         // overwrite vite manifest.json after render hooks
         const manifestJson = bundle['manifest.json'] as OutputAsset
         if (typeof manifestJson === 'undefined') {

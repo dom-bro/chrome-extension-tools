@@ -22,6 +22,7 @@ export class HMRPort {
      */
     setInterval(() => {
       try {
+        if (!chrome.runtime?.id) return
         this.port?.postMessage({ data: 'ping' })
       } catch (error) {
         if (
@@ -30,7 +31,10 @@ export class HMRPort {
         ) {
           // TODO: hook into error overlay?
           // location.reload()
-        } else throw error
+        } else {
+          // fix: Attempting to use a disconnected port object
+          console.log('dombrooo', error)
+        }
       }
     }, __CRX_HMR_TIMEOUT__)
     setInterval(this.initPort, 5 * 60 * 1000)
@@ -38,9 +42,12 @@ export class HMRPort {
   }
 
   initPort = () => {
+    // fix: Extension context invalidated.
+    if (!chrome.runtime?.id) return
     this.port?.disconnect()
+    const runtimeId = chrome.runtime?.id || localStorage.getItem('__crxjs__DEV__runtimeId__')
     // @ts-expect-error for content-script MAIN
-    this.port = chrome.runtime.connect(chrome?.runtime?.extensionId, { name: '@crx/client' })
+    this.port = chrome.runtime.connect(runtimeId, { name: '@crx/client' })
     this.port.onDisconnect.addListener(this.handleDisconnect.bind(this))
     this.port.onMessage.addListener(this.handleMessage.bind(this))
     this.port.postMessage({ type: 'connected' })
@@ -66,7 +73,7 @@ export class HMRPort {
       if (payload.event === 'crx:runtime-reload') {
         // delayed page reload; let background finish restart
         console.log('[crx] dombro hmr-content-port runtime reload')
-        // setTimeout(() => location.reload(), 500)
+        setTimeout(() => !document.hidden && location.reload(), 500)
       } else {
         // unpack hmr payloads; forward to vite client
         // console.log('[crx] content payload', payload)
@@ -86,7 +93,12 @@ export class HMRPort {
   }
 
   send = (data: string) => {
-    if (this.port) this.port.postMessage({ data })
+    console.log('dombro chrome.runtime?.id', chrome.runtime?.id)
+    // fix vite server 重启后报错：Extension context invalidated.
+    if (!chrome.runtime?.id) return
+    if (this.port) {
+      this.port.postMessage({ data })
+    }
     else throw new Error('HMRPort is not initialized')
   }
 }
