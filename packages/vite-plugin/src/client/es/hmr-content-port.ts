@@ -93,7 +93,7 @@ export class HMRPort {
   }
 
   send = (data: string) => {
-    console.log('dombro chrome.runtime?.id', chrome.runtime?.id)
+    // console.log('dombro chrome.runtime?.id', chrome.runtime?.id)
     // fix vite server 重启后报错：Extension context invalidated.
     if (!chrome.runtime?.id) return
     if (this.port) {

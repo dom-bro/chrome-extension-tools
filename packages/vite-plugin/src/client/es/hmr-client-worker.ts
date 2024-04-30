@@ -78,7 +78,7 @@ function notifyContentScripts(payload: HMRPayload) {
 
 /* ----------- CONNECT TO VITE DEV SERVER ---------- */
 
-console.log('[vite] dombro connecting...')
+console.log('[crx] dombro connecting...')
 
 // use server configuration, then fallback to inference
 const socketProtocol =
@@ -139,7 +139,7 @@ async function waitForSuccessfulPing(ms = 1000) {
 // ping server
 socket.addEventListener('close', async ({ wasClean }) => {
   if (wasClean) return
-  console.log(`[vite] dombro server connection lost. polling for restart...`)
+  console.log(`[crx] dombro server connection lost. polling for restart...`)
   await waitForSuccessfulPing()
   handleCrxHmrPayload({
     type: 'custom',

@@ -1,3 +1,4 @@
+// declare const __PREAMBLE__: string
 declare const __CLIENT__: string
 declare const __SCRIPT__: string
 ;(async () => {
@@ -10,9 +11,11 @@ declare const __SCRIPT__: string
     if (chrome.runtime.getURL) return chrome.runtime.getURL(url)
     return `chrome-extension://${runtimeId}/` + url
   }
+  // if (__PREAMBLE__)
+  //   await import(/* @vite-ignore */ getURL(__PREAMBLE__))
+  await import(/* @vite-ignore */ getURL(__CLIENT__))
   // this is the entry point of the content script, it will run each time this script is injected
   import(/* @vite-ignore */ getURL(__SCRIPT__))
-  import(/* @vite-ignore */ getURL(__CLIENT__))
 })().catch(console.error)
 
 export {}
