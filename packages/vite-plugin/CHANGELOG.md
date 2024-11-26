@@ -1,5 +1,40 @@
 # @crxjs/vite-plugin
 
+## 2.0.0-beta.28
+
+### Patch Changes
+
+- 0dac0e3: Clean up archived files and update magic-string
+
+## 2.0.0-beta.27
+
+### Patch Changes
+
+- 0a9ed4f: Proxy Cache-Control header
+- ef545f6: build(deps): bump rollup from 2.78.1 to 2.79.2 in
+  /packages/vite-plugin build(deps): bump vite from 3.1.7 to 3.2.11 in
+  /packages/vite-plugin
+
+## 2.0.0-beta.26
+
+### Major Changes
+
+- f4eb4d4: fix: workaround for the issue with chrome.runtime.getURL introduced
+  in Chrome 130 causing CSP rejecting script due to different origin (GUID
+  instead of chrome extension id)
+
+## 2.0.0-beta.25
+
+### Patch Changes
+
+- ce84b68: Update manifest author field schema to match documentation.
+
+## 2.0.0-beta.24
+
+### Patch Changes
+
+- b0ba786: fix: monorepo hmr
+
 ## 2.0.0-beta.23
 
 ### Patch Changes
