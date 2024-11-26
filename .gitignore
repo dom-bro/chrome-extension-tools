@@ -4,6 +4,7 @@
 **/tests/artifacts
 .vscode
 .idea
+pnpm-lock.yaml
 **/chromium-data-dir-*
 **/tests/e2e/mv3-*-hmr/src
 **/__diff_output__

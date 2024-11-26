@@ -116,7 +116,7 @@ const config = defineConfig([
   {
     input: 'src/node/index.ts',
     output: { file: 'dist/index.d.ts', format: 'es' },
-    plugins: [dts()],
+    plugins: [json(), dts()],
   },
 ])
 

@@ -15,6 +15,7 @@ import { pluginManifest } from './plugin-manifest'
 import { pluginWebAccessibleResources } from './plugin-webAccessibleResources'
 import type { CrxOptions, CrxPlugin } from './types'
 import { contentScripts } from './contentScripts'
+export { version } from '../../package.json'
 
 export const crx = (
   options: {
