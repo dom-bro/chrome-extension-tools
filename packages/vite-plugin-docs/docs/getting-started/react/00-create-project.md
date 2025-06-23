@@ -20,6 +20,32 @@ extension React HTML page. The first two sections take about 90 seconds!
 
 <CreateProjectTabs projectType="react"/>
 
+:::tip package.json
+
+Check `package.json` to ensure that `"type": "module"` is set. If this package
+key is missing, Vite might not be able to build `vite.config.js`.
+
+:::
+
+## Install CRXJS
+
+```sh
+npm install --save-dev @crxjs/vite-plugin
+```
+
+## Create a web extension manifest
+
+Create a file named `manifest.json` next to `vite.config.js`.
+
+```json title=manifest.json
+{
+  "manifest_version": 3,
+  "name": "CRXJS React Vite Example",
+  "version": "1.0.0",
+  "action": { "default_popup": "index.html" }
+}
+```
+
 ## Update the Vite config
 
 Update `vite.config.js` to match the code below.
@@ -39,17 +65,6 @@ export default defineConfig({
     crx({ manifest }),
   ],
 })
-```
-
-Create a file named `manifest.json` next to `vite.config.js`.
-
-```json title=manifest.json
-{
-  "manifest_version": 3,
-  "name": "CRXJS React Vite Example",
-  "version": "1.0.0",
-  "action": { "default_popup": "index.html" }
-}
 ```
 
 ## First development build

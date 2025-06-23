@@ -1,6 +1,6 @@
 {
-  "name": "@crxjs/vite-plugin-dombro",
-  "version": "2.0.0-beta.28",
+  "name": "@crxjs/vite-plugin",
+  "version": "2.0.2",
   "description": "Build Chrome Extensions with this Vite plugin.",
   "keywords": [
     "rollup-plugin",
@@ -13,20 +13,21 @@
     "browser",
     "browser-extension"
   ],
-  "homepage": "https://github.com/crxjs/rollup-plugin-chrome-extension",
+  "homepage": "https://crxjs.dev/vite-plugin",
   "bugs": {
-    "url": "https://github.com/crxjs/rollup-plugin-chrome-extension/issues"
+    "url": "https://github.com/crxjs/chrome-extension-tools/issues"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/crxjs/rollup-plugin-chrome-extension.git"
+    "url": "git+https://github.com/crxjs/chrome-extension-tools",
+    "directory": "packages/vite-plugin"
   },
   "license": "MIT",
   "author": "Jack and Amy Steam <jacksteamdev@gmail.com>",
   "type": "module",
   "exports": {
     ".": {
-      "require": "./dist/index.cjs",
+      "require": "./index.cjs",
       "import": "./dist/index.mjs",
       "types": "./dist/index.d.ts"
     },
@@ -35,14 +36,14 @@
       "types": "./client.d.ts"
     }
   },
-  "main": "dist/index.cjs",
+  "main": "index.cjs",
   "module": "dist/index.mjs",
   "types": "dist/index.d.ts",
   "files": [
     "dist",
     "types",
     "manifest.schema.json",
-    "schema",
+    "index.cjs",
     "client.d.ts"
   ],
   "scripts": {
@@ -74,6 +75,7 @@
     "fs-extra": "^10.0.1",
     "jsesc": "^3.0.2",
     "magic-string": "^0.30.12",
+    "pathe": "^2.0.1",
     "picocolors": "^1.0.0",
     "react-refresh": "^0.13.0",
     "rollup": "2.79.2",
@@ -99,7 +101,7 @@
     "@types/react-dom": "17.0.18",
     "@typescript-eslint/eslint-plugin": "5.41.0",
     "@typescript-eslint/parser": "5.41.0",
-    "@vitejs/plugin-react": "^2.1.0",
+    "@vitejs/plugin-react": "^2.2.0",
     "@vitejs/plugin-vue": "3.2.0",
     "chokidar": "^3.5.3",
     "esbuild": "0.17.14",
@@ -108,7 +110,7 @@
     "eslint-plugin-react": "^7.29.4",
     "jest-image-snapshot": "^5.2.0",
     "npm-run-all": "^4.1.5",
-    "playwright-chromium": "1.33.0",
+    "playwright-chromium": "1.52.0",
     "react": "17.0.2",
     "react-dom": "17.0.2",
     "rimraf": "3.0.2",

@@ -10,6 +10,7 @@ import type { HMRPayload } from 'vite'
 // injected by the hmr plugin when served
 declare const __BASE__: string
 declare const __HMR_PROTOCOL__: string
+declare const __HMR_TOKEN__: string
 declare const __HMR_HOSTNAME__: string
 declare const __HMR_PORT__: string
 declare const __HMR_TIMEOUT__: number
@@ -21,7 +22,7 @@ const ownOrigin = `chrome-extension://${chrome.runtime.id}`;
 self.addEventListener('fetch', (fetchEvent) => {
   const url = new URL(fetchEvent.request.url)
   if (url.origin === ownOrigin) {
-    fetchEvent.respondWith(sendToServer(url))
+    fetchEvent.respondWith(sendToServer(fetchEvent.request))
   }
 })
 
@@ -33,7 +34,10 @@ self.addEventListener('fetch', (fetchEvent) => {
  * the extension CSP, but Chromium currently ignores custom CSP's:
  * https://bugs.chromium.org/p/chromium/issues/detail?id=1247690#c_ts1631117342
  */
-async function sendToServer(url: URL): Promise<Response> {
+async function sendToServer(req: Request): Promise<Response> {
+  const url = new URL(req.url);
+  const requestHeaders = new Headers(req.headers);
+
   // change the url to point to the dev server
   url.protocol = 'http:'
   url.host = 'localhost'
@@ -41,13 +45,19 @@ async function sendToServer(url: URL): Promise<Response> {
   // add a timestamp to force Chrome to do a new request
   url.searchParams.set('t', Date.now().toString())
   // URLSearchParams adds "=" to every empty param & vite doesn't like it
-  const response = await fetch(url.href.replace(/=$|=(?=&)/g, ''))
+  const response = await fetch(url.href.replace(/=$|=(?=&)/g, ''),{
+    headers: requestHeaders,
+  });
+
+
+  const responseHeaders = new Headers(response.headers);
+  responseHeaders.set('Content-Type', responseHeaders.get('Content-Type') ?? 'text/javascript');
+  responseHeaders.set('Cache-Control', responseHeaders.get('Cache-Control') ?? '');
+
+
   // circumvent extension CSP by creating response from extension origin
   return new Response(response.body, {
-    headers: {
-      'Content-Type': response.headers.get('Content-Type') ?? 'text/javascript',
-      'Cache-Control': response.headers.get('Cache-Control') ?? '',
-    },
+    headers: responseHeaders,
   })
 }
 
@@ -58,7 +68,12 @@ const ports = new Set<chrome.runtime.Port>()
 const connectListener = (port: chrome.runtime.Port) => {
   if (port.name === '@crx/client') {
     ports.add(port)
-    port.onDisconnect.addListener((port) => ports.delete(port))
+    port.onDisconnect.addListener((port) => {
+      if (chrome.runtime.lastError) {
+        console.error(chrome.runtime.lastError)
+      }
+      ports.delete(port)
+    })
     port.onMessage.addListener((message: string) => {
       // console.log(
       //   `${JSON.stringify(message, null, 2)} from ${port.sender?.origin}`,
@@ -84,8 +99,9 @@ console.log('[crx] dombro connecting...')
 // use server configuration, then fallback to inference
 const socketProtocol =
   __HMR_PROTOCOL__ || (location.protocol === 'https:' ? 'wss' : 'ws')
+const socketToken = __HMR_TOKEN__;
 const socketHost = `${__HMR_HOSTNAME__ || location.hostname}:${__HMR_PORT__}`
-const socket = new WebSocket(`${socketProtocol}://${socketHost}`, 'vite-hmr')
+const socket = new WebSocket(`${socketProtocol}://${socketHost}?token=${socketToken}`, 'vite-hmr')
 const base = __BASE__ || '/'
 
 // Listen for messages

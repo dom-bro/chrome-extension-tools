@@ -1,5 +1,5 @@
 import fs from 'fs-extra'
-import path from 'path'
+import path from 'pathe'
 import { createUpdate, waitForInnerHtml } from '../helpers'
 import { serve } from '../runners'
 import { test, expect } from 'vitest'
@@ -21,7 +21,7 @@ test('crx page update on hmr', async () => {
   const app = page.locator('#crx-app')
   const button = app.locator('button')
 
-  await page.goto('https://www.google.com')
+  await page.goto('https://example.com')
   await app.waitFor()
 
   // check that page does not update during hmr update
