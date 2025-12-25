@@ -103,11 +103,11 @@ export interface ManifestV3 {
         css?: string[] | undefined
         js?: string[] | undefined
         run_at?: string | undefined
-        world?: 'MAIN'
         all_frames?: boolean | undefined
         match_about_blank?: boolean | undefined
         include_globs?: string[] | undefined
         exclude_globs?: string[] | undefined
+        world?: chrome.scripting.ExecutionWorld | string | undefined
       }[]
     | undefined
   direct_content_scripts?:
@@ -117,7 +117,6 @@ export interface ManifestV3 {
         css?: string[] | undefined
         js?: string[] | undefined
         run_at?: string | undefined
-        world?: 'MAIN'
         all_frames?: boolean | undefined
         match_about_blank?: boolean | undefined
         include_globs?: string[] | undefined
