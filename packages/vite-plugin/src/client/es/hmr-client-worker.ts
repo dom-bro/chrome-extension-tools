@@ -14,11 +14,13 @@ declare const __HMR_TOKEN__: string
 declare const __HMR_HOSTNAME__: string
 declare const __HMR_PORT__: string
 declare const __HMR_TIMEOUT__: number
+declare const __SERVER_PROTO__: string
 declare const __SERVER_PORT__: string
+declare const __LIVE_RELOAD__: boolean
 
 /* -------- REDIRECT FETCH TO THE DEV SERVER ------- */
 
-const ownOrigin = `chrome-extension://${chrome.runtime.id}`;
+const ownOrigin = `chrome-extension://${chrome.runtime.id}`
 self.addEventListener('fetch', (fetchEvent) => {
   const url = new URL(fetchEvent.request.url)
   if (url.origin === ownOrigin) {
@@ -35,25 +37,29 @@ self.addEventListener('fetch', (fetchEvent) => {
  * https://bugs.chromium.org/p/chromium/issues/detail?id=1247690#c_ts1631117342
  */
 async function sendToServer(req: Request): Promise<Response> {
-  const url = new URL(req.url);
-  const requestHeaders = new Headers(req.headers);
+  const url = new URL(req.url)
+  const requestHeaders = new Headers(req.headers)
 
   // change the url to point to the dev server
-  url.protocol = 'http:'
+  url.protocol = __SERVER_PROTO__ + ':'
   url.host = 'localhost'
   url.port = __SERVER_PORT__
   // add a timestamp to force Chrome to do a new request
   url.searchParams.set('t', Date.now().toString())
   // URLSearchParams adds "=" to every empty param & vite doesn't like it
-  const response = await fetch(url.href.replace(/=$|=(?=&)/g, ''),{
+  const response = await fetch(url.href.replace(/=$|=(?=&)/g, ''), {
     headers: requestHeaders,
-  });
+  })
 
-
-  const responseHeaders = new Headers(response.headers);
-  responseHeaders.set('Content-Type', responseHeaders.get('Content-Type') ?? 'text/javascript');
-  responseHeaders.set('Cache-Control', responseHeaders.get('Cache-Control') ?? '');
-
+  const responseHeaders = new Headers(response.headers)
+  responseHeaders.set(
+    'Content-Type',
+    responseHeaders.get('Content-Type') ?? 'text/javascript',
+  )
+  responseHeaders.set(
+    'Cache-Control',
+    responseHeaders.get('Cache-Control') ?? '',
+  )
 
   // circumvent extension CSP by creating response from extension origin
   return new Response(response.body, {
@@ -99,9 +105,12 @@ console.log('[crx] dombro connecting...')
 // use server configuration, then fallback to inference
 const socketProtocol =
   __HMR_PROTOCOL__ || (location.protocol === 'https:' ? 'wss' : 'ws')
-const socketToken = __HMR_TOKEN__;
+const socketToken = __HMR_TOKEN__
 const socketHost = `${__HMR_HOSTNAME__ || location.hostname}:${__HMR_PORT__}`
-const socket = new WebSocket(`${socketProtocol}://${socketHost}?token=${socketToken}`, 'vite-hmr')
+const socket = new WebSocket(
+  `${socketProtocol}://${socketHost}?token=${socketToken}`,
+  'vite-hmr',
+)
 const base = __BASE__ || '/'
 
 // Listen for messages
@@ -126,6 +135,15 @@ function handleSocketMessage(payload: HMRPayload) {
 }
 
 function handleCrxHmrPayload(payload: CrxHMRPayload) {
+  if (!__LIVE_RELOAD__) {
+    // when liveReload is disabled, don't relay any CRX payloads to content
+    // scripts and don't reload the extension
+    if (payload.event === 'crx:runtime-reload') {
+      console.log('[crx] runtime reload suppressed (liveReload disabled)')
+    }
+    return
+  }
+
   // everything goes to the content scripts
   notifyContentScripts(payload)
 
@@ -158,8 +176,14 @@ socket.addEventListener('close', async ({ wasClean }) => {
   if (wasClean) return
   console.log(`[crx] dombro server connection lost. polling for restart...`)
   await waitForSuccessfulPing()
-  handleCrxHmrPayload({
-    type: 'custom',
-    event: 'crx:runtime-reload',
-  })
+  if (__LIVE_RELOAD__) {
+    handleCrxHmrPayload({
+      type: 'custom',
+      event: 'crx:runtime-reload',
+    })
+  } else {
+    console.log(
+      '[crx] server reconnected, skipping reload (liveReload disabled)',
+    )
+  }
 })

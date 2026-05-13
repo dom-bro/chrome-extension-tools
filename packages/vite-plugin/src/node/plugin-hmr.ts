@@ -9,7 +9,10 @@ import { getFileName, prefix } from './fileWriter-utilities'
 import { _debug } from './helpers'
 import { isImporter } from './isImporter'
 import { isAbsolute, join } from './path'
+import { getContentCssEntries } from './plugin-contentScripts_declared'
+import { getOptions } from './plugin-optionsProvider'
 import type { CrxHMRPayload, CrxPluginFn, ManifestFiles } from './types'
+import { isContentCssId } from './virtualFileIds'
 
 const debug = _debug('hmr')
 
@@ -23,6 +26,7 @@ export const pluginHMR: CrxPluginFn = () => {
   let decoratedSend: ((payload: HMRPayload) => void) | undefined
   let config: ResolvedConfig
   let subs: Subscription
+  let liveReload = true
 
   return [
     {
@@ -31,6 +35,8 @@ export const pluginHMR: CrxPluginFn = () => {
       enforce: 'pre',
       // server hmr host should be localhost
       async config({ server = {}, ...config }) {
+        const opts = await getOptions({ ...config, server })
+        liveReload = opts.liveReload !== false
         if (server.hmr === false) return
         if (server.hmr === true) server.hmr = {}
         server.hmr = server.hmr ?? {}
@@ -74,7 +80,11 @@ export const pluginHMR: CrxPluginFn = () => {
           subs.add(fileWriterError$.subscribe(send))
           subs.add(
             crxHMRPayload$.subscribe((payload) => {
-              send(payload) // send crx hmr and error events
+              // keep subscription alive for file writer side effects,
+              // but skip sending HMR payloads when liveReload is disabled
+              if (liveReload) {
+                send(payload) // send crx hmr and error events
+              }
             }),
           )
         }
@@ -88,16 +98,33 @@ export const pluginHMR: CrxPluginFn = () => {
 
         const relFiles = new Set<string>()
         const fsFiles = new Set<string>()
+        const virtualModules = new Set<string>()
+
         for (const m of modules) {
           if (m.id?.startsWith(root)) {
             relFiles.add(m.id.slice(server.config.root.length))
           } else if (m.url?.startsWith('/@fs')) {
             fsFiles.add(m.url)
+          } else if (
+            m.id?.startsWith('\0') ||
+            m.url?.startsWith('/@id/__x00__')
+          ) {
+            // Virtual modules (like UnoCSS's __uno.css) have IDs starting with \0
+            // or URLs starting with /@id/__x00__
+            // These need to be handled separately for HMR to work correctly
+            const virtualId = m.url ?? m.id
+            if (virtualId) {
+              virtualModules.add(virtualId)
+              debug('virtual module detected:', virtualId)
+            }
           }
         }
 
         // update local vendor build if change detected from monorepo packages
         fsFiles.forEach((file) => update(file))
+
+        // update virtual modules (like UnoCSS, TailwindCSS virtual CSS)
+        virtualModules.forEach((file) => update(file))
 
         // check if changed file is a background dependency
         if (inputManifestFiles.background.length) {
@@ -106,19 +133,50 @@ export const pluginHMR: CrxPluginFn = () => {
             relFiles.has(background) ||
             modules.some(isImporter(join(server.config.root, background)))
           ) {
-            debug('sending runtime reload')
-            server.ws.send(crxRuntimeReload)
+            if (liveReload) {
+              debug('sending runtime reload')
+              server.ws.send(crxRuntimeReload)
+            } else {
+              debug('skipping runtime reload (liveReload disabled)')
+            }
           }
         }
 
         for (const [key, script] of contentScripts)
           if (key === script.id) {
-            // check if changed file is a content script dependency
-            if (
-              relFiles.has(script.id) ||
-              modules.some(isImporter(join(server.config.root, script.id)))
-            ) {
-              relFiles.forEach((relFile) => update(relFile))
+            // Handle synthetic CSS content script entries (virtual modules)
+            if (isContentCssId(script.id)) {
+              // Check if any of the CSS files associated with this synthetic entry changed
+              const cssEntries = getContentCssEntries()
+              const entry = cssEntries.find((e) => e.virtualId === script.id)
+              if (entry) {
+                // Check if any changed file is a CSS file that this entry imports
+                const changedCssFiles = [...relFiles].filter((relFile) =>
+                  entry.cssFiles.some(
+                    (cssFile) =>
+                      relFile === prefix('/', cssFile) ||
+                      relFile.endsWith(cssFile),
+                  ),
+                )
+                if (changedCssFiles.length > 0) {
+                  // Update the CSS module files
+                  changedCssFiles.forEach((relFile) => update(relFile))
+                  // Also update the synthetic entry to ensure the import chain is refreshed
+                  update(script.id)
+                  // Also update virtual modules if content script CSS dependencies change
+                  virtualModules.forEach((file) => update(file))
+                }
+              }
+            } else {
+              // Regular content script - check if changed file is a dependency
+              if (
+                relFiles.has(script.id) ||
+                modules.some(isImporter(join(server.config.root, script.id)))
+              ) {
+                relFiles.forEach((relFile) => update(relFile))
+                // Also update virtual modules if content script dependencies change
+                virtualModules.forEach((file) => update(file))
+              }
             }
           }
       },

@@ -1,5 +1,5 @@
 import type { Node as AcornNode } from 'acorn'
-import type { Options as FastGlobOptions } from 'fast-glob'
+import type { GlobOptions } from 'tinyglobby'
 import type { OutputBundle, PluginContext } from 'rollup'
 import type { HMRPayload, ResolvedConfig, Plugin as VitePlugin } from 'vite'
 import { ManifestV3 } from './manifest'
@@ -85,12 +85,26 @@ export interface CrxOptions {
     hmrTimeout?: number
     injectCss?: boolean
   }
-  fastGlobOptions?: FastGlobOptions
+  globOptions?: GlobOptions
   /**
    * The browser that this extension is targeting, can be "firefox" or "chrome".
    * Default is "chrome".
    */
   browser?: Browser
+  /**
+   * Enable automatic extension reload and HMR during development. When false:
+   *
+   * - The extension will not call `chrome.runtime.reload()` on background changes
+   *   or dev server reconnection.
+   * - Content scripts will not receive HMR updates or reload their host pages.
+   * - Files are still rebuilt and written to the output directory on change.
+   *
+   * Use this when content scripts have side effects on injection and you want
+   * to manually reload the extension in the browser.
+   *
+   * Default is `true`.
+   */
+  liveReload?: boolean
 }
 
 export type Browser = 'firefox' | 'chrome'

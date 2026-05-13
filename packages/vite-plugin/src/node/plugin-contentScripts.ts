@@ -15,7 +15,7 @@ import { basename } from './path'
 import { RxMap } from './RxMap'
 import { CrxPluginFn } from './types'
 import { contentHmrPortId, preambleId, viteClientId } from './virtualFileIds'
-import colors from 'picocolors';
+import colors from 'picocolors'
 
 /**
  * Emits content scripts and loaders.
@@ -30,23 +30,24 @@ import colors from 'picocolors';
  * - This plugin emits content scripts and loaders
  */
 export const pluginContentScripts: CrxPluginFn = () => {
-  const pluginName = 'crx:content-scripts';
+  const pluginName = 'crx:content-scripts'
 
   let server: ViteDevServer
   let preambleCode: string | false | undefined
   let hmrTimeout: number | undefined
+  let liveReload = true
   let sub = new Subscription()
 
-  const worldMainIds = new Set<string>();
+  const worldMainIds = new Set<string>()
 
   const findWorldMainIds = async (config: UserConfig, env: ConfigEnv) => {
     const { manifest: _manifest } = await getOptions(config)
 
     const manifest = await (typeof _manifest === 'function'
       ? _manifest(env)
-      : _manifest);
+      : _manifest)
 
-    (manifest.content_scripts || []).forEach(({ world, js }) => {
+    ;(manifest.content_scripts || []).forEach(({ world, js }) => {
       if (world === 'MAIN' && js) {
         js.forEach((path) => worldMainIds.add(prefix('/', path)))
       }
@@ -69,10 +70,12 @@ export const pluginContentScripts: CrxPluginFn = () => {
       name: pluginName,
       apply: 'serve',
       async config(config, env) {
-        await findWorldMainIds(config, env);
-        const { contentScripts = {} } = await getOptions(config)
+        await findWorldMainIds(config, env)
+        const opts = await getOptions(config)
+        const { contentScripts = {} } = opts
         hmrTimeout = contentScripts.hmrTimeout ?? 5000
         preambleCode = preambleCode ?? contentScripts.preambleCode
+        liveReload = opts.liveReload !== false
       },
       async configureServer(_server) {
         server = _server
@@ -112,13 +115,13 @@ export const pluginContentScripts: CrxPluginFn = () => {
                   id: getFileName({ type: 'loader', id }),
                   source: worldMainIds.has(file.id)
                     ? createDevMainLoader({
-                      fileName: `./${file.fileName.split('/').at(-1)}`
-                    })
+                        fileName: `./${file.fileName.split('/').at(-1)}`,
+                      })
                     : createDevLoader({
-                      preamble: preamble.fileName,
-                      client: client.fileName,
-                      fileName: file.fileName,
-                    }),
+                        preamble: preamble.fileName,
+                        client: client.fileName,
+                        fileName: file.fileName,
+                      }),
                 })
                 script.fileName = loader.fileName
               } else if (type === 'iife') {
@@ -141,10 +144,9 @@ export const pluginContentScripts: CrxPluginFn = () => {
         }
 
         if (id === contentHmrPortId) {
-          const defined = contentHmrPort.replace(
-            '__CRX_HMR_TIMEOUT__',
-            JSON.stringify(hmrTimeout),
-          )
+          const defined = contentHmrPort
+            .replace('__CRX_HMR_TIMEOUT__', JSON.stringify(hmrTimeout))
+            .replace('__CRX_LIVE_RELOAD__', JSON.stringify(liveReload))
           return defined
         }
       },
@@ -158,7 +160,7 @@ export const pluginContentScripts: CrxPluginFn = () => {
       apply: 'build',
       enforce: 'pre',
       async config(config, env) {
-        await findWorldMainIds(config, env);
+        await findWorldMainIds(config, env)
 
         return {
           ...config,
@@ -203,7 +205,9 @@ export const pluginContentScripts: CrxPluginFn = () => {
                     id: basename(script.id),
                   }),
                   source: worldMainIds.has(script.id)
-                    ? createProMainLoader({ fileName: `./${fileName.split('/').at(-1)}` })
+                    ? createProMainLoader({
+                        fileName: `./${fileName.split('/').at(-1)}`,
+                      })
                     : createProLoader({ fileName }),
                 })
 
