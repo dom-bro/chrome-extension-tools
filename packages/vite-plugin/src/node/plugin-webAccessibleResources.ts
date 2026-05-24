@@ -111,12 +111,7 @@ export const pluginWebAccessibleResources: CrxPluginFn = () => {
 
         // derive content script resources from vite file manifest
         if (contentScripts.size > 0) {
-          // Vite 5 changed the manifest.json location to .vite/manifest.json.
-          // In order to support both Vite <=4 and Vite 5, we need to check the Vite version and determine the path accordingly.
-          const viteMajorVersion = parseInt(ViteVersion.split('.')[0])
-          const manifestPath =
-            viteMajorVersion > 4 ? '.vite/manifest.json' : 'manifest.json'
-          const manifestPath = viteMajorVersion > 0 ? '.vite/manifest.json' : 'manifest.json'
+          const manifestPath = '.vite/manifest.json' in bundle ? '.vite/manifest.json' : 'manifest.json'
 
           const viteManifest = parseJsonAsset<ViteManifest>(
             bundle,
@@ -268,10 +263,11 @@ export const pluginWebAccessibleResources: CrxPluginFn = () => {
         // If the user didn't explicitly set build.manifest to true (i.e. it is disabled
         // or left at its default), remove the Vite manifest from the bundle to keep the distribution clean
         if (!userWantsViteManifest) {
-          // Vite 5+ uses .vite/manifest.json, older versions use manifest.json
-          const viteMajorVersion = parseInt(ViteVersion.split('.')[0])
+          // 同上：从 bundle 探测，避免 link 场景下 vite 版本不一致的问题。
           const manifestPath =
-            viteMajorVersion > 4 ? '.vite/manifest.json' : 'manifest.json'
+            '.vite/manifest.json' in bundle
+              ? '.vite/manifest.json'
+              : 'manifest.json'
           if (bundle[manifestPath]) {
             debug(
               'Removing Vite manifest: %s (userWantsViteManifest=%s)',
