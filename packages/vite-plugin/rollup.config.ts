@@ -122,7 +122,8 @@ const config = defineConfig([
   {
     input: 'src/node/index.ts',
     output: { file: 'dist/index.d.mts', format: 'es' },
-    plugins: [dts()],
+    // 需要 json() 来处理 index.ts 中对 package.json 的 import
+    plugins: [json(), dts()],
   },
 ])
 
