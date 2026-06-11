@@ -160,7 +160,6 @@ function handleCrxHmrPayload(payload: CrxHMRPayload) {
 }
 
 async function waitForSuccessfulPing(ms = 1000) {
-  // eslint-disable-next-line no-constant-condition
   while (true) {
     try {
       await fetch(`${base}__vite_ping`)
