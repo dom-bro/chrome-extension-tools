@@ -17,13 +17,17 @@ declare const __HMR_TIMEOUT__: number
 declare const __SERVER_PROTO__: string
 declare const __SERVER_PORT__: string
 declare const __LIVE_RELOAD__: boolean
+declare const __CRX_HMR_TOKEN__: string
+
+const crxClientPortName = `@crx/client:${__CRX_HMR_TOKEN__}`
 
 /* -------- REDIRECT FETCH TO THE DEV SERVER ------- */
 
 const ownOrigin = `chrome-extension://${chrome.runtime.id}`
 self.addEventListener('fetch', (fetchEvent) => {
   const url = new URL(fetchEvent.request.url)
-  if (url.origin === ownOrigin) {
+  // Chrome handles the Favicon API directly; it is not a dev-server asset.
+  if (url.origin === ownOrigin && url.pathname !== '/_favicon/') {
     fetchEvent.respondWith(sendToServer(fetchEvent.request))
   }
 })
@@ -71,8 +75,15 @@ async function sendToServer(req: Request): Promise<Response> {
 
 const ports = new Set<chrome.runtime.Port>()
 
-const connectListener = (port: chrome.runtime.Port) => {
-  if (port.name === '@crx/client') {
+function isExternalSenderAllowed(port: chrome.runtime.Port) {
+  return !port.sender?.id || port.sender.id === chrome.runtime.id
+}
+
+function handlePort(port: chrome.runtime.Port, { external = false } = {}) {
+  if (
+    port.name === crxClientPortName &&
+    (!external || isExternalSenderAllowed(port))
+  ) {
     ports.add(port)
     port.onDisconnect.addListener((port) => {
       if (chrome.runtime.lastError) {
@@ -89,9 +100,10 @@ const connectListener = (port: chrome.runtime.Port) => {
   }
 }
 
-chrome.runtime.onConnect.addListener(connectListener)
-// for content-script MAIN
-chrome.runtime.onConnectExternal.addListener(connectListener)
+chrome.runtime.onConnect.addListener(handlePort)
+chrome.runtime.onConnectExternal.addListener((port) =>
+  handlePort(port, { external: true }),
+)
 
 function notifyContentScripts(payload: HMRPayload) {
   const data = JSON.stringify(payload)
@@ -100,7 +112,7 @@ function notifyContentScripts(payload: HMRPayload) {
 
 /* ----------- CONNECT TO VITE DEV SERVER ---------- */
 
-console.log('[crx] dombro connecting...')
+console.log('[vite] connecting...')
 
 // use server configuration, then fallback to inference
 const socketProtocol =
@@ -134,6 +146,39 @@ function handleSocketMessage(payload: HMRPayload) {
   }
 }
 
+// Firefox destroys content-script timers when the extension restarts. Keep
+// pending tab reloads in the background document's origin storage, then replay
+// them after the replacement background (including user modules) has loaded.
+const reloadTabsKey = '@crx/reload-tabs'
+const hasBackgroundDocument = typeof document !== 'undefined'
+if (hasBackgroundDocument) {
+  const pending = localStorage.getItem(reloadTabsKey)
+  localStorage.removeItem(reloadTabsKey)
+  if (pending && __LIVE_RELOAD__) {
+    try {
+      const { tabs, timestamp } = JSON.parse(pending) as {
+        tabs: number[]
+        timestamp: number
+      }
+      if (
+        Array.isArray(tabs) &&
+        tabs.every(Number.isInteger) &&
+        Date.now() - timestamp >= 0 &&
+        Date.now() - timestamp < 30_000
+      ) {
+        const reloadTabs = () => {
+          for (const tabId of tabs)
+            chrome.tabs.reload(tabId).catch(console.error)
+        }
+        if (document.readyState === 'complete') reloadTabs()
+        else globalThis.addEventListener('load', reloadTabs, { once: true })
+      }
+    } catch (error) {
+      console.warn('[crx] could not restore pending tab reloads', error)
+    }
+  }
+}
+
 function handleCrxHmrPayload(payload: CrxHMRPayload) {
   if (!__LIVE_RELOAD__) {
     // when liveReload is disabled, don't relay any CRX payloads to content
@@ -150,7 +195,21 @@ function handleCrxHmrPayload(payload: CrxHMRPayload) {
   switch (payload.event) {
     case 'crx:runtime-reload':
       // immediate runtime reload
-      console.log('[crx] dombro hmr-client-worker runtime reload', payload)
+      console.log('[crx] runtime reload')
+      // Firefox-only background documents restore these tabs after restart.
+      if (hasBackgroundDocument) {
+        const tabs = [
+          ...new Set(
+            [...ports]
+              .map((port) => port.sender?.tab?.id)
+              .filter((id): id is number => typeof id === 'number'),
+          ),
+        ]
+        localStorage.setItem(
+          reloadTabsKey,
+          JSON.stringify({ tabs, timestamp: Date.now() }),
+        )
+      }
       chrome.runtime.reload()
       break
 
@@ -173,7 +232,7 @@ async function waitForSuccessfulPing(ms = 1000) {
 // ping server
 socket.addEventListener('close', async ({ wasClean }) => {
   if (wasClean) return
-  console.log(`[crx] dombro server connection lost. polling for restart...`)
+  console.log(`[vite] server connection lost. polling for restart...`)
   await waitForSuccessfulPing()
   if (__LIVE_RELOAD__) {
     handleCrxHmrPayload({

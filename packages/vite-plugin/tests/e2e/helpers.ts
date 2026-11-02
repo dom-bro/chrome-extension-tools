@@ -19,12 +19,17 @@ export async function getPage(
     process.env.NODE_ENV === 'test' && process.env.TIMEOUT
       ? parseInt(process.env.TIMEOUT)
       : 5000
+  if (process.env.E2E_BROWSER === 'firefox') {
+    test = typeof test === 'string'
+      ? test.replace('chrome-extension', 'moz-extension')
+      : new RegExp(test.source.replace('chrome-extension', 'moz-extension'), test.flags)
+  }
   const regex = test instanceof RegExp ? test : new RegExp(jsesc(test))
   const waitForUrl = async (p: Page): Promise<boolean> => {
     try {
       await p.waitForURL(regex, { timeout })
       return true
-    } catch (error) {
+    } catch {
       // never resolve if page closes, etc
       return new Promise(() => undefined)
     }
@@ -104,7 +109,6 @@ export const createUpdate =
     await Promise.all([
       ...plugins.map((p) => p()),
       fs.copy(srcDir, target, {
-        recursive: true,
         overwrite: true,
         filter: (f) => {
           if (fs.lstatSync(f).isDirectory()) return true

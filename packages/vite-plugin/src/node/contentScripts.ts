@@ -1,3 +1,4 @@
+import firefoxMainBridge from 'client/iife/content-firefox-main-bridge.ts'
 import contentDevLoader from 'client/iife/content-dev-loader.ts'
 import contentDevMainLoader from 'client/iife/content-dev-main-loader.ts'
 import contentProLoader from 'client/iife/content-pro-loader.ts'
@@ -22,6 +23,8 @@ export interface ContentScript {
   fileName?: string
   /** Content script from script import */
   isDynamicScript?: boolean
+  /** Isolated loader for Firefox MAIN-world modules. */
+  firefoxMainModule?: string
   /** Match patterns from manifest content scripts */
   matches: string[]
   /** CSS files imported by manifest */
@@ -71,6 +74,38 @@ export function hashScriptId(script: Pick<ContentScript, 'type' | 'id'>) {
   return hash(`${script.type}&${script.id}`)
 }
 
+function makeDevClientOptional(source: string) {
+  // In normal dev mode CRXJS writes a transformed /@vite/client file into the
+  // extension output and the loader must import it. Vite 8.1 bundled dev mode
+  // does not expose /@vite/client through the old transformRequest path, so the
+  // bundled-dev loader gets an empty client filename and must skip that import.
+  // Keep the original template unchanged when a client filename is available so
+  // normal dev output stays byte-for-byte compatible with existing snapshots.
+  return source
+    .replace(
+      `    await import(
+      /* @vite-ignore */
+      chrome.runtime.getURL(__CLIENT__)
+    );`,
+      `    if (__CLIENT__)
+      await import(
+        /* @vite-ignore */
+        chrome.runtime.getURL(__CLIENT__)
+      );`,
+    )
+    .replace(
+      `      await import(
+        /* @vite-ignore */
+        __CLIENT__
+      );`,
+      `      if (__CLIENT__)
+        await import(
+          /* @vite-ignore */
+          __CLIENT__
+        );`,
+    )
+}
+
 export function createDevLoader({
   preamble,
   client,
@@ -80,7 +115,11 @@ export function createDevLoader({
   client: string
   fileName: string
 }): string {
-  return contentDevLoader
+  const source = client
+    ? contentDevLoader
+    : makeDevClientOptional(contentDevLoader)
+
+  return source
     .replace(/__PREAMBLE__/g, JSON.stringify(preamble))
     .replace(/__CLIENT__/g, JSON.stringify(client))
     .replace(/__SCRIPT__/g, JSON.stringify(fileName))
@@ -92,15 +131,44 @@ export function createProLoader({ fileName }: { fileName: string }): string {
 }
 
 export function createDevMainLoader({
+  preamble,
+  client,
   fileName,
 }: {
+  preamble: string
+  client: string
   fileName: string
 }): string {
-  return contentDevMainLoader
+  const source = client
+    ? contentDevMainLoader
+    : makeDevClientOptional(contentDevMainLoader)
+
+  return source
+    .replace(/__PREAMBLE__/g, JSON.stringify(preamble))
+    .replace(/__CLIENT__/g, JSON.stringify(client))
     .replace(/__SCRIPT__/g, JSON.stringify(fileName))
     .replace(/__TIMESTAMP__/g, JSON.stringify(Date.now()))
 }
 
-export function createProMainLoader({ fileName }: { fileName: string }): string {
+export function createProMainLoader({
+  fileName,
+}: {
+  fileName: string
+}): string {
   return contentProMainLoader.replace(/__SCRIPT__/g, JSON.stringify(fileName))
+}
+
+export function createIifeReloadBridge({ client }: { client: string }): string {
+  return [
+    `import(chrome.runtime.getURL(${JSON.stringify(client)}))`,
+    `  .then(({ HMRPort }) => new HMRPort())`,
+    `  .catch(console.error)`,
+    '',
+  ].join('\n')
+}
+
+export function createFirefoxMainBridge(fileName: string, token = '') {
+  return firefoxMainBridge
+    .replace(/__MAIN_MODULE__/g, JSON.stringify(fileName))
+    .replace(/__CRX_HMR_TOKEN__/g, JSON.stringify(token))
 }

@@ -1,6 +1,6 @@
 import fs from 'fs-extra'
 import path from 'pathe'
-import { firstValueFrom } from 'rxjs'
+import { firstValueFrom, timeout } from 'rxjs'
 import { expect, test } from 'vitest'
 import { createUpdate, getPage } from '../helpers'
 import { serve } from '../runners'
@@ -11,7 +11,7 @@ test('liveReload default: background change triggers runtime reload', async () =
   const src2 = path.join(__dirname, 'src2')
 
   await fs.remove(src)
-  await fs.copy(src1, src, { recursive: true })
+  await fs.copy(src1, src)
 
   const { browser, routes } = await serve(__dirname)
 
@@ -31,13 +31,17 @@ test('liveReload default: background change triggers runtime reload', async () =
   expect(optionsPage.isClosed()).toBe(false)
 
   // update background dependency -> should trigger runtime reload
-  const closeEvent = optionsPage.waitForEvent('close', { timeout: 5000 })
-  await update('bg-onload.ts')
-  await firstValueFrom(routes)
-  await closeEvent
+  await Promise.all([
+    // Subscribe before writing: Firefox may finish reloading during the update.
+    firstValueFrom(routes.pipe(timeout(15_000))),
+    ...(process.env.E2E_BROWSER === 'firefox'
+      ? []
+      : [optionsPage.waitForEvent('close', { timeout: 5000 })]),
+    update('bg-onload.ts'),
+  ])
 
-  // runtime reload happened: options page closed, content script page reloaded
-  expect(optionsPage.isClosed()).toBe(true)
+  // Chrome closes its options tab; Firefox keeps it. Both must reload content.
+  expect(optionsPage.isClosed()).toBe(process.env.E2E_BROWSER !== 'firefox')
   expect(reloads).toBeGreaterThanOrEqual(1)
   await app.waitFor({ timeout: 15_000 })
 })

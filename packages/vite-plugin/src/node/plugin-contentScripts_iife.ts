@@ -8,6 +8,7 @@ import type {
 import { build, mergeConfig, InlineConfig, ResolvedConfig, UserConfig } from 'vite'
 import { contentScripts, type ContentScript } from './contentScripts'
 import { formatFileData } from './fileWriter-utilities'
+import { reduceMatchPatterns } from './helpers'
 import type { ManifestV3 } from './manifest'
 import { basename, dirname, join } from './path'
 import { getOptions } from './plugin-optionsProvider'
@@ -73,6 +74,7 @@ export const pluginContentScriptsIife: CrxPluginFn = () => {
   const pluginName = 'crx:content-scripts-iife'
 
   let config: ResolvedConfig
+  let outputMinify: unknown
 
   return [
     {
@@ -86,6 +88,11 @@ export const pluginContentScriptsIife: CrxPluginFn = () => {
       name: pluginName,
       apply: 'build',
       enforce: 'post',
+      outputOptions(options) {
+        // Capture each output before Rolldown normalizes minifier targets into
+        // internal values that cannot be passed back to a new Vite build.
+        outputMinify = 'minify' in options ? options.minify : undefined
+      },
       async generateBundle() {
         const opts = await getOptions({ plugins: config.plugins } as UserConfig)
         const _manifest = opts.manifest
@@ -115,7 +122,12 @@ export const pluginContentScriptsIife: CrxPluginFn = () => {
           const outputFileName = getIifeOutputPath(entry.file)
 
           try {
-            const iifeConfig = createIifeConfig(config, entry.id, outputFileName)
+            const iifeConfig = createIifeConfig(
+              config,
+              entry.id,
+              outputFileName,
+              outputMinify,
+            )
             const result = await build(iifeConfig)
             const outputs = getBuildOutputs(result, entry.file)
             emitIifeOutputs(this, outputs, entry.file, outputFileName)
@@ -153,11 +165,19 @@ function collectIifeEntries(
   root: string,
 ): IifeEntry[] {
   const entries: IifeEntry[] = []
-  const entryIds = new Set<string>()
+  const entriesById = new Map<string, IifeEntry>()
 
   const addEntry = (entry: IifeEntry) => {
-    if (entryIds.has(entry.id)) return
-    entryIds.add(entry.id)
+    const existing = entriesById.get(entry.id)
+    if (existing) {
+      // the same script may be declared in multiple content_scripts entries
+      // with different matches; union the matches of all registrations
+      existing.matches = reduceMatchPatterns([
+        ...new Set([...existing.matches, ...entry.matches]),
+      ])
+      return
+    }
+    entriesById.set(entry.id, entry)
     entries.push(entry)
   }
 
@@ -274,6 +294,7 @@ function createIifeConfig(
   parentConfig: ResolvedConfig,
   entryPath: string,
   outputFileName: string,
+  outputMinify: unknown,
 ): InlineConfig {
   const entryName = basename(outputFileName, '.js')
 
@@ -283,7 +304,10 @@ function createIifeConfig(
     mode: parentConfig.mode,
     resolve: parentConfig.resolve,
     define: parentConfig.define,
-    esbuild: parentConfig.esbuild,
+    // Vite 8 has already converted legacy esbuild options to Oxc options.
+    ...('oxc' in parentConfig
+      ? { oxc: parentConfig.oxc }
+      : { esbuild: parentConfig.esbuild }),
   }
 
   const iifeConfig: InlineConfig = {
@@ -301,6 +325,9 @@ function createIifeConfig(
       },
       rollupOptions: {
         output: {
+          // The active output handles object and array configs without copying
+          // the parent format, entry names, or code-splitting settings.
+          ...(outputMinify !== undefined ? { minify: outputMinify } : {}),
           entryFileNames: outputFileName,
           // Ensure all dependencies are inlined
           inlineDynamicImports: true,

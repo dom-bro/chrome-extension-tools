@@ -5,6 +5,26 @@ import type { HMRPayload } from 'vite'
 
 declare const __CRX_HMR_TIMEOUT__: number
 declare const __CRX_LIVE_RELOAD__: boolean
+declare const __CRX_HMR_TOKEN__: string
+
+const crxClientPortName = `@crx/client:${__CRX_HMR_TOKEN__}`
+
+function hasOwnExtensionRuntime(
+  runtime: typeof chrome.runtime,
+  extensionId: string,
+) {
+  try {
+    return new URL(runtime.getURL('')).host === extensionId
+  } catch {
+    return false
+  }
+}
+
+const runtime = typeof chrome === 'undefined' ? undefined : chrome.runtime
+const extensionId = new URL(import.meta.url).host
+const connectsToOwnRuntime = runtime
+  ? hasOwnExtensionRuntime(runtime, extensionId)
+  : false
 
 function isCrxHMRPayload(x: HMRPayload): x is CrxHMRPayload {
   return x.type === 'custom' && x.event.startsWith('crx:')
@@ -14,7 +34,27 @@ export class HMRPort {
   private port: chrome.runtime.Port | undefined
   private callbacks = new Map<string, Set<(event: any) => void>>()
 
+  // Firefox-only: MAIN cannot connect through externally_connectable; receive
+  // dev HMR from the isolated loader in content-firefox-main-bridge.ts.
+  private readonly mainBridge =
+    !connectsToOwnRuntime &&
+    location.protocol !== 'moz-extension:' &&
+    import.meta.url.startsWith('moz-extension:')
+
   constructor() {
+    if (this.mainBridge) {
+      window.addEventListener('message', (event) => {
+        if (
+          event.source === window &&
+          event.data?.channel === `@crx/main:${__CRX_HMR_TOKEN__}` &&
+          typeof event.data?.data === 'string'
+        )
+          this.handleMessage(event.data)
+      })
+      // Vite attaches message listeners after construction.
+      queueMicrotask(this.initPort)
+      return
+    }
     /**
      * To keep extension background alive:
      *
@@ -23,7 +63,6 @@ export class HMRPort {
      */
     setInterval(() => {
       try {
-        if (!chrome.runtime?.id) return
         this.port?.postMessage({ data: 'ping' })
       } catch (error) {
         if (
@@ -31,11 +70,8 @@ export class HMRPort {
           error.message.includes('Extension context invalidated.')
         ) {
           // TODO: hook into error overlay?
-          // location.reload()
-        } else {
-          // fix: Attempting to use a disconnected port object
-          console.log('dombrooo', error)
-        }
+          location.reload()
+        } else throw error
       }
     }, __CRX_HMR_TIMEOUT__)
     setInterval(this.initPort, 5 * 60 * 1000)
@@ -43,12 +79,21 @@ export class HMRPort {
   }
 
   initPort = () => {
-    // fix: Extension context invalidated.
-    if (!chrome.runtime?.id) return
+    if (this.mainBridge) {
+      window.postMessage(
+        { channel: `@crx/main:${__CRX_HMR_TOKEN__}`, ready: true },
+        '*',
+      )
+      return
+    }
+    if (!runtime) throw new Error('[crx] chrome.runtime is not available')
+
+    const connectInfo = { name: crxClientPortName }
+
     this.port?.disconnect()
-    const runtimeId = chrome.runtime?.id || localStorage.getItem('__crxjs__DEV__runtimeId__')
-    // @ts-expect-error for content-script MAIN
-    this.port = chrome.runtime.connect(runtimeId, { name: '@crx/client' })
+    this.port = connectsToOwnRuntime
+      ? runtime.connect(connectInfo)
+      : runtime.connect(extensionId, connectInfo)
     this.port.onDisconnect.addListener(this.handleDisconnect.bind(this))
     this.port.onMessage.addListener(this.handleMessage.bind(this))
     this.port.postMessage({ type: 'connected' })
@@ -74,8 +119,8 @@ export class HMRPort {
       if (payload.event === 'crx:runtime-reload') {
         if (__CRX_LIVE_RELOAD__) {
           // delayed page reload; let background finish restart
-          console.log('[crx] dombro runtime reload')
-          setTimeout(() => !document.hidden && location.reload(), 500)
+          console.log('[crx] runtime reload')
+          setTimeout(() => location.reload(), 500)
         } else {
           console.log('[crx] runtime reload suppressed (liveReload disabled)')
         }
@@ -98,12 +143,9 @@ export class HMRPort {
   }
 
   send = (data: string) => {
-    // console.log('dombro chrome.runtime?.id', chrome.runtime?.id)
-    // fix vite server 重启后报错：Extension context invalidated.
-    if (!chrome.runtime?.id) return
-    if (this.port) {
-      this.port.postMessage({ data })
-    }
+    // Vite's keepalive/connected messages need no privileged forwarding.
+    if (this.mainBridge) return
+    if (this.port) this.port.postMessage({ data })
     else throw new Error('HMRPort is not initialized')
   }
 }
